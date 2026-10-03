@@ -78,6 +78,8 @@ a seed belongs to this workflow.
 
   # 7. Remove this linked worktree and its environment. This also works for
   #    unwarmed worktrees with no Stim registry entry. Git-created branches stay.
+  #    When another tool created the worktree and removes it, reclaim only:
+  #    stim worktree remove --keep-checkout
   stim worktree remove
 
 A Debug \`ios\` or \`android\` run checks the reserved port before the device
@@ -561,7 +563,10 @@ result as proof instead of requiring an unrelated screenshot.`,
   environment -- the same \`device\`, \`lease\` and \`workspace\` lines, ending
   with a sentence instead of a \`removed\` line, because the checkout itself
   is never touched: \`Reclaimed the environment; the working tree stays (it
-  is the source checkout).\`
+  is the source checkout).\` \`--keep-checkout\` does the same for a linked
+  worktree whose creator (a worktree manager, a CI runner) removes it: it skips
+  the uncommitted-work and lock refusals, because nothing in the checkout is
+  touched, and ends with \`the working tree stays (--keep-checkout)\`.
 
   \`gc\` names each slow step on stderr as it starts, in every mode; its
   report stays on stdout, and with \`--json\` stdout carries only the payload:

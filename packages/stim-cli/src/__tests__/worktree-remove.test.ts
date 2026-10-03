@@ -1042,6 +1042,70 @@ test('action: on success, deletes an owned iOS sim via simctl', async () => {
   expect(getProject(wtDir)).toBe(null);
 });
 
+test('action: --keep-checkout reclaims a dirty linked worktree and leaves the checkout and branch to its creator', async () => {
+  const nestedDir = join(wtDir, 'apps', 'mobile');
+  mkdirSync(nestedDir, { recursive: true });
+  upsertProject(nestedDir, {
+    metroPort: 8092,
+    platforms: { ios: { deviceUdid: 'U1', owned: true, deviceName: 'stim-x' } },
+  });
+  writeFileSync(join(wtDir, 'scratch.txt'), 'unsaved work');
+  const exec = makeExecutor({
+    dirty: '?? scratch.txt\n',
+    worktrees: porcelain([
+      { path: mainDir, branch: 'main' },
+      { path: wtDir, branch: 'feat-x' },
+    ]),
+    simctlList: simctlJson([{ udid: 'U1', name: 'stim-x', state: 'Shutdown', isAvailable: true }]),
+  });
+  setExecutor(exec);
+
+  const errs: string[] = [];
+  const original = console.error;
+  console.error = (m) => errs.push(String(m));
+  try {
+    const run = captureAction(registerRemove);
+    await run(wtDir, { keepCheckout: true });
+  } finally {
+    console.error = original;
+  }
+
+  expect(process.exitCode).not.toBe(1);
+  expect(exec.calls.run.some((c) => /xcrun simctl delete U1/.test(c))).toBeTruthy();
+  expect(getProject(nestedDir)).toBe(null);
+  expect(readFileSync(join(wtDir, 'scratch.txt'), 'utf-8')).toBe('unsaved work');
+  expect(![...exec.calls.run, ...exec.calls.runQuiet].some((c) => /worktree remove|branch -[dD]/.test(c))).toBeTruthy();
+  expect(errs.join('\n')).toMatch(/working tree stays \(--keep-checkout\)/);
+});
+
+test('action: --keep-checkout from inside a linked worktree names the worktree whose environment it reclaims', async () => {
+  const nestedDir = join(wtDir, 'apps', 'mobile');
+  mkdirSync(nestedDir, { recursive: true });
+  upsertProject(nestedDir, { metroPort: 8093 });
+  const exec = makeExecutor({
+    worktrees: porcelain([
+      { path: mainDir, branch: 'main' },
+      { path: wtDir, branch: 'feat-x' },
+    ]),
+  });
+  setExecutor(exec);
+
+  const errs: string[] = [];
+  const original = console.error;
+  console.error = (m) => errs.push(String(m));
+  try {
+    const run = captureAction(registerRemove);
+    await run(nestedDir, { keepCheckout: true });
+  } finally {
+    console.error = original;
+  }
+
+  expect(process.exitCode).not.toBe(1);
+  expect(getProject(nestedDir)).toBe(null);
+  expect(existsSync(nestedDir)).toBe(true);
+  expect(errs.join('\n')).toContain(`is inside the worktree ${wtDir}; reclaiming its environment.`);
+});
+
 test('action: reaps owned sims under two nested monorepo app-dir keys, both of them', async () => {
   const nestedDir1 = join(wtDir, 'apps', 'mobile1');
   const nestedDir2 = join(wtDir, 'apps', 'mobile2');

@@ -17,6 +17,10 @@ WHAT RECLAIMS AN OWNED DEVICE
   stim worktree remove    parks eligible owned simulators and emulators
                             (\`guide lifecycle pool\`); deletes them when
                             parking is disabled or their setup cannot be verified
+  stim worktree remove --keep-checkout
+                            the same reclaim, for a worktree another tool
+                            removes: devices park, the Metro port and build
+                            outputs go, the checkout and its branch stay
   stim gc --delete        sweeps devices this Stim home created that no project
                             references (\`guide cleanup gc\`), clears
                             verified parked simulators and emulators, and

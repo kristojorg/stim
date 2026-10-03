@@ -671,6 +671,8 @@ interface RemoveOptions {
   guard?: (lockedKeys: readonly string[]) => string[];
   /** A HEAD whose change gc proved is on the default branch; its local-only commits do not block removal. */
   mergedHead?: string;
+  /** Reclaim the environment and leave the checkout and its branch to the tool that created the worktree. */
+  keepCheckout?: boolean;
 }
 
 interface RemovalInspection {
@@ -897,8 +899,16 @@ async function runRemove(target: string | undefined, opts: RemoveOptions, onRemo
     return;
   }
   if (entry.path !== path) {
-    console.error(chalk.dim(`${path} is inside the worktree ${entry.path}; removing that.`));
+    console.error(
+      chalk.dim(
+        `${path} is inside the worktree ${entry.path}; ${opts.keepCheckout ? 'reclaiming its environment' : 'removing that'}.`,
+      ),
+    );
     path = entry.path;
+  }
+  if (opts.keepCheckout) {
+    await reclaimEnvironment(path, '--keep-checkout');
+    return;
   }
   if (entry.locked) {
     console.error(chalk.red(`Refusing to remove ${path}: git has it locked.`));
@@ -1044,8 +1054,12 @@ export function registerRemove(worktree: Command): void {
       'Remove a worktree, its unused Stim-created branch, build artifacts, owned devices, and Metro port. Defaults to the current workspace. On the source checkout it reclaims the environment only and leaves the tree in place.',
     )
     .option('--force', 'remove even when the worktree holds uncommitted or unpushed work or initialized submodules')
-    .action(async (target: string | undefined, opts: { force?: boolean }) => {
-      await removeWorktreeTarget(target, { force: opts.force });
+    .option(
+      '--keep-checkout',
+      'reclaim the devices, Metro port and build outputs, and leave the checkout and its branch to the tool that created the worktree',
+    )
+    .action(async (target: string | undefined, opts: { force?: boolean; keepCheckout?: boolean }) => {
+      await removeWorktreeTarget(target, { force: opts.force, keepCheckout: opts.keepCheckout });
     });
 }
 
