@@ -1314,11 +1314,18 @@ function scanAvdEmulatorProcesses(
 
 // A POSIX zombie keeps its pid, so kill(pid, 0) succeeds, until its parent reaps it. An emulator this
 // Stim process booted stays a zombie after it exits while this process runs synchronous code.
+const EMULATOR_PROGRAM = /(?:^|\/)(?:qemu-system-[^\s/]+|emulator)(?:\s|$)/;
+
+// The emulator leaves hardware-qemu.ini.lock behind when it exits, and the OS hands its PID to
+// unrelated processes; a live PID whose program is not an emulator no longer holds the lock.
 function emulatorProcessRunning(pid: number): boolean {
   if (!pidExists(pid)) return false;
   if (process.platform === 'win32') return true;
-  const stat = getExecutor().runFileQuiet('ps', ['-o', 'stat=', '-p', String(pid)], { timeoutMs: 5000 });
-  return stat === null || !stat.trim().startsWith('Z');
+  const row = getExecutor().runFileQuiet('ps', ['-o', 'stat=,command=', '-p', String(pid)], { timeoutMs: 5000 });
+  if (row === null) return true;
+  const [stat = '', ...command] = row.trim().split(/\s+/);
+  if (stat.startsWith('Z')) return false;
+  return command.length === 0 || EMULATOR_PROGRAM.test(command.join(' '));
 }
 
 export function assertOwnedAvdStopped(
@@ -1386,7 +1393,7 @@ export function waitForAndroidEmulatorShutdown(
     platform = process.platform,
     resolveDirectory = ownedAvdDirectory,
     readProcessId = readAvdProcessId,
-    processAlive = pidExists,
+    processAlive = emulatorProcessRunning,
     listProcesses = listAvdEmulatorProcesses,
     captureIdentity = captureProcessIdentity,
     inspectIdentity = inspectProcessIdentity,

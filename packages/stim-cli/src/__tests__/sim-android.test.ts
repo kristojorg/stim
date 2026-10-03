@@ -659,6 +659,50 @@ describe.skipIf(process.platform === 'win32')('zombie emulator processes (ps sta
     }
     expect(refused).toBe(live);
   });
+
+  test.each([
+    ['S    /sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 -netdelay none -avd stim-app', true],
+    ['S    /Users/me/Android SDK/emulator/emulator @stim-app -no-window', true],
+    ['Ss   /Library/Developer/CoreSimulator/Volumes/iOS_24A434/usr/libexec/icloudmailagent', false],
+  ])('assertOwnedAvdStopped treats a lock holder running %s as live: %s', (row, live) => {
+    setExecutor(
+      makeExecutor({
+        runFileQuiet: (file, args = []) => (file === 'ps' && args.includes(String(process.pid)) ? `${row}\n` : null),
+      }),
+    );
+    let refused = false;
+    try {
+      assertOwnedAvdStopped('stim-app', {
+        listProcesses: () => [],
+        resolveDirectory: () => '/avds/stim-app.avd',
+        readProcessId: () => process.pid,
+      });
+    } catch (error) {
+      refused = /still has a live emulator process/.test(String(error));
+    }
+    expect(refused).toBe(live);
+  });
+
+  test('waitForAndroidEmulatorShutdown releases a lock whose PID now runs another program, and signals nothing', () => {
+    setExecutor(
+      makeExecutor({
+        runFileQuiet: (file, args = []) =>
+          file === 'ps' && args.includes(String(process.pid)) ? 'Ss   /usr/libexec/icloudmailagent\n' : null,
+      }),
+    );
+    const signal = vi.fn<(pid: number, name: NodeJS.Signals) => void>();
+
+    expect(() =>
+      waitForAndroidEmulatorShutdown('stim-app', null, {
+        listProcesses: () => [],
+        resolveDirectory: () => '/avds/stim-app.avd',
+        readProcessId: () => process.pid,
+        directoryExists: () => true,
+        signal,
+      }),
+    ).not.toThrow();
+    expect(signal).not.toHaveBeenCalled();
+  });
 });
 
 test.each([
